@@ -1,0 +1,5 @@
+{
+  "name": "TSmartSpend",
+  "description": "A smart budgeting app with quick cash entry, financial insights powered by Gemini, and daily reporting reminders.",
+  "requestFramePermissions": []
+}
