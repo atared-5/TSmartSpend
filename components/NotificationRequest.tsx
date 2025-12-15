@@ -5,7 +5,10 @@ export const NotificationRequest: React.FC = () => {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
+    // Only show if supported and permission is default (not yet prompted)
+    // Check localstorage too, if they manually disabled via settings we shouldn't prompt here.
+    const settings = localStorage.getItem('smartspend_reminder_settings');
+    if ('Notification' in window && Notification.permission === 'default' && !settings) {
       setVisible(true);
     }
   }, []);
@@ -14,9 +17,17 @@ export const NotificationRequest: React.FC = () => {
     Notification.requestPermission().then(permission => {
       if (permission === 'granted') {
         setVisible(false);
+        // Save default settings
+        localStorage.setItem('smartspend_reminder_settings', JSON.stringify({
+            enabled: true,
+            time: '21:00'
+        }));
         new Notification("Notifications Enabled", {
           body: "We will remind you at 9 PM to log your daily spending!",
         });
+      } else {
+        // If denied, maybe hide?
+        setVisible(false);
       }
     });
   };

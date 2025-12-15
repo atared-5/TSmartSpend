@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, WalletCards, X, ChevronDown, ChevronUp, Target } from 'lucide-react';
+import { LayoutDashboard, WalletCards, X, ChevronDown, ChevronUp, Target, Bell } from 'lucide-react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -75,6 +75,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           >
             <Target className="w-5 h-5" />
             Goals
+          </NavLink>
+
+          <NavLink 
+            to="/reminders" 
+            onClick={onClose}
+            className={({ isActive }) => `flex items-center gap-3 p-3 rounded-xl transition-colors ${isActive ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Bell className="w-5 h-5" />
+            Reminders
           </NavLink>
         </nav>
       </div>

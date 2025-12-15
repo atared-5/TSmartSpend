@@ -5,6 +5,7 @@ import { QuickAdd } from './pages/QuickAdd';
 import { Budgets } from './pages/Budgets';
 import { Goals } from './pages/Goals';
 import { AccountDetails } from './pages/AccountDetails';
+import { Reminders } from './pages/Reminders';
 import { BudgetProvider } from './context/BudgetContext';
 import { NotificationRequest } from './components/NotificationRequest';
 import { Sidebar } from './components/Sidebar';
@@ -57,24 +58,55 @@ const Layout: React.FC = () => {
   );
 };
 
-// Check for 9 PM notification logic (Simulated)
+// Check for user-defined notification time
 const NotificationChecker: React.FC = () => {
   useEffect(() => {
     const checkTime = () => {
       const now = new Date();
-      // Check if it's 9 PM (21:00)
-      if (now.getHours() === 21 && now.getMinutes() === 0) {
-        if (Notification.permission === 'granted') {
-          new Notification("Spending Report", {
-            body: "It's 9 PM! Time to review your spending for today.",
-            icon: '/vite.svg'
-          });
+      const settingsStr = localStorage.getItem('smartspend_reminder_settings');
+      
+      let enabled = false;
+      let targetHour = 21; // Default 9 PM
+      let targetMinute = 0;
+
+      if (settingsStr) {
+        const settings = JSON.parse(settingsStr);
+        enabled = settings.enabled;
+        const [h, m] = (settings.time || '21:00').split(':');
+        targetHour = parseInt(h);
+        targetMinute = parseInt(m);
+      } else {
+        // Legacy/Default fallback: if permission granted but no setting file, assume 9 PM enabled
+        if ('Notification' in window && Notification.permission === 'granted') {
+           enabled = true;
         }
+      }
+
+      // Check time match (simple minute precision)
+      if (enabled && now.getHours() === targetHour && now.getMinutes() === targetMinute) {
+         // Check if already notified this minute/day to prevent duplicate triggers
+         const lastSent = localStorage.getItem('smartspend_last_notification');
+         const currentTrigger = now.toDateString() + ':' + now.getHours() + ':' + now.getMinutes();
+         
+         if (lastSent !== currentTrigger) {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                try {
+                    new Notification("Spending Report", {
+                        body: "Time to review your spending for today.",
+                        icon: '/vite.svg',
+                        tag: 'daily-reminder'
+                    });
+                } catch (e) {
+                    console.error("Notification failed", e);
+                }
+            }
+            localStorage.setItem('smartspend_last_notification', currentTrigger);
+         }
       }
     };
 
-    // Check every minute
-    const interval = setInterval(checkTime, 60000);
+    // Check every 10 seconds
+    const interval = setInterval(checkTime, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -93,6 +125,7 @@ const App: React.FC = () => {
             <Route path="/budgets/:period?" element={<Budgets />} />
             <Route path="/goals" element={<Goals />} />
             <Route path="/account/:id" element={<AccountDetails />} />
+            <Route path="/reminders" element={<Reminders />} />
           </Route>
         </Routes>
       </HashRouter>
