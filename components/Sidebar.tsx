@@ -19,7 +19,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       />
       
       {/* Sidebar Panel */}
-      <div className={`fixed top-0 left-0 h-full w-64 bg-white shadow-2xl z-50 transform transition-transform duration-300 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <div className={`fixed top-0 left-0 h-full w-64 bg-white shadow-2xl z-50 transform transition-transform duration-300 flex flex-col ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-4 flex items-center justify-between border-b border-slate-100">
           <h2 className="text-xl font-bold text-slate-900">Menu</h2>
           <button onClick={onClose} className="p-2 text-slate-500 hover:bg-slate-100 rounded-full">
@@ -27,7 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
         
-        <nav className="p-4 space-y-2">
+        <nav className="p-4 space-y-2 flex-1">
           <NavLink 
             to="/" 
             onClick={onClose}

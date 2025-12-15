@@ -8,7 +8,7 @@ import { AccountDetails } from './pages/AccountDetails';
 import { BudgetProvider } from './context/BudgetContext';
 import { NotificationRequest } from './components/NotificationRequest';
 import { Sidebar } from './components/Sidebar';
-import { Home, PlusCircle } from 'lucide-react';
+import { PlusCircle, FileText } from 'lucide-react';
 
 const Layout: React.FC = () => {
   const location = useLocation();
@@ -25,17 +25,31 @@ const Layout: React.FC = () => {
         <Outlet context={{ toggleSidebar: () => setIsSidebarOpen(prev => !prev) }} />
       </main>
 
-      {/* Floating Action Button for Mobile-First Primary Action */}
+      {/* Floating Action Buttons */}
       {showNav && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 z-40">
-           <NavLink 
-              to="/add"
-              className="bg-slate-900 text-white flex items-center gap-2 px-6 py-3 rounded-full shadow-xl shadow-slate-300 hover:scale-105 active:scale-95 transition-all"
-           >
-              <PlusCircle className="w-5 h-5" />
-              <span className="font-semibold text-sm">Record Cash</span>
-           </NavLink>
-        </div>
+        <>
+          {/* Record Cash - Bottom Left */}
+          <div className="fixed bottom-6 left-6 z-40">
+             <NavLink 
+                to="/add"
+                className="bg-slate-900 text-white flex items-center gap-2 px-5 py-3 rounded-full shadow-xl shadow-slate-300 hover:scale-105 active:scale-95 transition-all"
+             >
+                <PlusCircle className="w-5 h-5" />
+                <span className="font-semibold text-sm">Cash</span>
+             </NavLink>
+          </div>
+
+          {/* Daily Report - Bottom Right */}
+          <div className="fixed bottom-6 right-6 z-40">
+             <NavLink 
+                to="/add?type=report"
+                className="bg-indigo-600 text-white flex items-center gap-2 px-5 py-3 rounded-full shadow-xl shadow-indigo-200 hover:scale-105 active:scale-95 transition-all"
+             >
+                <FileText className="w-5 h-5" />
+                <span className="font-semibold text-sm">Report</span>
+             </NavLink>
+          </div>
+        </>
       )}
 
       <NotificationRequest />

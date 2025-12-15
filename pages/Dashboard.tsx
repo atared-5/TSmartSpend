@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useBudget } from '../context/BudgetContext';
 import { SpendingChart } from '../components/Charts';
-import { Plus, Wallet, TrendingUp, ChevronDown, ChevronUp, Sparkles, AlertCircle, Menu, FileText, CheckCircle2, Target } from 'lucide-react';
+import { Plus, Wallet, TrendingUp, ChevronDown, ChevronUp, Sparkles, AlertCircle, Menu, CheckCircle2, Target, X } from 'lucide-react';
 import { Link, useOutletContext, useNavigate } from 'react-router-dom';
 import { analyzeFinances } from '../services/geminiService';
 import { FinancialInsight } from '../types';
@@ -15,6 +15,9 @@ export const Dashboard: React.FC = () => {
   const [isAddingSource, setIsAddingSource] = useState(false);
   const [newSourceName, setNewSourceName] = useState('');
   const [newSourceBalance, setNewSourceBalance] = useState('');
+  
+  // State for category detail modal
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   
   const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
 
@@ -33,6 +36,14 @@ export const Dashboard: React.FC = () => {
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
   const activeBudgets = budgets.filter(b => b.limit > 0 && b.period === 'MONTHLY');
+
+  // Selected Category Data for Modal
+  const selectedCategory = categories.find(c => c.id === selectedCategoryId);
+  const selectedCategoryTransactions = selectedCategoryId 
+    ? transactions
+        .filter(t => t.categoryId === selectedCategoryId)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    : [];
 
   const handleGeminiAnalysis = async () => {
     setLoadingInsight(true);
@@ -72,21 +83,12 @@ export const Dashboard: React.FC = () => {
            <h1 className="text-2xl font-bold text-slate-900">My Finances</h1>
            <p className="text-slate-500 text-sm">Welcome back!</p>
         </div>
-        <div className="flex gap-2">
-            <button 
-                onClick={() => navigate('/add?type=report')}
-                className="p-2 bg-indigo-50 border border-indigo-100 rounded-full text-indigo-600 hover:bg-indigo-100"
-                title="Add Report"
-            >
-                <FileText className="w-5 h-5" />
-            </button>
-            <button 
+        <button 
             onClick={toggleSidebar}
             className="p-2 bg-white border border-slate-200 rounded-full shadow-sm text-slate-600 hover:text-indigo-600 transition-colors"
-            >
+        >
             <Menu className="w-5 h-5" />
-            </button>
-        </div>
+        </button>
       </header>
 
       {/* Goals Widget */}
@@ -288,7 +290,11 @@ export const Dashboard: React.FC = () => {
         <h2 className="text-lg font-semibold text-slate-800 mb-4">Spending by Category</h2>
         <div className="space-y-3">
           {topCategories.map(cat => (
-             <div key={cat.id} className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-50">
+             <button 
+                key={cat.id} 
+                onClick={() => setSelectedCategoryId(cat.id)}
+                className="w-full flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-50 hover:bg-slate-50 transition-all active:scale-[0.99] text-left"
+             >
                 <div className="flex items-center gap-3">
                   <span className="text-xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full">{cat.icon}</span>
                   <div>
@@ -297,14 +303,18 @@ export const Dashboard: React.FC = () => {
                   </div>
                 </div>
                 <span className="font-bold text-slate-700">฿{cat.total.toLocaleString()}</span>
-             </div>
+             </button>
           ))}
 
           {otherCategories.length > 0 && (
             <>
               <div className={`space-y-3 overflow-hidden transition-all duration-300 ${showAllCategories ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
                 {otherCategories.map(cat => (
-                  <div key={cat.id} className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-50">
+                  <button 
+                    key={cat.id} 
+                    onClick={() => setSelectedCategoryId(cat.id)}
+                    className="w-full flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-50 hover:bg-slate-50 transition-all active:scale-[0.99] text-left"
+                  >
                       <div className="flex items-center gap-3">
                         <span className="text-xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full">{cat.icon}</span>
                         <div>
@@ -313,7 +323,7 @@ export const Dashboard: React.FC = () => {
                         </div>
                       </div>
                       <span className="font-bold text-slate-700">฿{cat.total.toLocaleString()}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
               <button 
@@ -337,6 +347,63 @@ export const Dashboard: React.FC = () => {
           )}
         </div>
       </section>
+
+      {/* Category Details Modal */}
+      {selectedCategory && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center pointer-events-none">
+          {/* Backdrop */}
+          <div 
+             className="absolute inset-0 bg-black/40 pointer-events-auto backdrop-blur-sm transition-opacity" 
+             onClick={() => setSelectedCategoryId(null)} 
+          />
+          
+          {/* Panel */}
+          <div className="bg-white w-full max-w-md h-[80vh] sm:h-auto sm:max-h-[80vh] sm:rounded-3xl rounded-t-3xl shadow-2xl pointer-events-auto flex flex-col animate-in slide-in-from-bottom-4 relative">
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white rounded-t-3xl sticky top-0 z-10">
+                  <div className="flex items-center gap-3">
+                      <span className="text-3xl bg-indigo-50 w-12 h-12 flex items-center justify-center rounded-2xl">{selectedCategory.icon}</span>
+                      <div>
+                          <h3 className="font-bold text-xl text-slate-900">{selectedCategory.name}</h3>
+                          <p className="text-sm text-slate-500">{selectedCategoryTransactions.length} transactions</p>
+                      </div>
+                  </div>
+                  <button onClick={() => setSelectedCategoryId(null)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500">
+                    <X className="w-5 h-5" />
+                  </button>
+              </div>
+
+              <div className="overflow-y-auto p-4 flex-1">
+                  {selectedCategoryTransactions.length > 0 ? (
+                      <div className="space-y-3">
+                          {selectedCategoryTransactions.map(tx => (
+                              <div key={tx.id} className="flex items-center justify-between bg-slate-50 p-4 rounded-xl">
+                                  <div>
+                                      <p className="text-sm font-bold text-slate-900">
+                                        {new Date(tx.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                                      </p>
+                                      {tx.note ? (
+                                        <p className="text-xs text-slate-500 mt-0.5">{tx.note}</p>
+                                      ) : (
+                                        <p className="text-xs text-slate-400 italic mt-0.5">No note</p>
+                                      )}
+                                  </div>
+                                  <div className="text-right">
+                                     <span className="font-bold text-slate-900 block">฿{tx.amount.toLocaleString()}</span>
+                                     <span className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-400 min-h-[200px]">
+                          <AlertCircle className="w-10 h-10 mb-2 opacity-30" />
+                          <p>No transactions found for this category.</p>
+                      </div>
+                  )}
+              </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
