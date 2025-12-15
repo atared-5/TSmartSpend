@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useBudget } from '../context/BudgetContext';
-import { ArrowLeft, Edit2, Save, Plus, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { ArrowLeft, Edit2, Save, Plus, ChevronLeft, ChevronRight, Check, Trash2 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { BudgetPeriod } from '../types';
 
@@ -9,7 +9,7 @@ export const Budgets: React.FC = () => {
   const isWeekly = period === 'weekly';
   const budgetPeriod: BudgetPeriod = isWeekly ? 'WEEKLY' : 'MONTHLY';
   
-  const { categories, budgets, setBudget, transactions, updateCategory, addCategory } = useBudget();
+  const { categories, budgets, setBudget, transactions, updateCategory, addCategory, deleteCategory } = useBudget();
   const navigate = useNavigate();
   
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
@@ -78,6 +78,13 @@ export const Budgets: React.FC = () => {
     setEditingCategoryId(null);
   };
 
+  const handleDeleteCategory = (id: string) => {
+    if (window.confirm("Delete this category? Transactions will act as uncategorized.")) {
+        deleteCategory(id);
+        setEditingCategoryId(null);
+    }
+  };
+
   const handleAddCategory = () => {
     if (newCatName && newCatIcon) {
         addCategory({
@@ -124,7 +131,8 @@ export const Budgets: React.FC = () => {
                      <div className="flex items-center gap-2 flex-1 mr-2">
                         <input className="w-10 text-center border rounded p-1" value={editCatIcon} onChange={e => setEditCatIcon(e.target.value)} />
                         <input className="flex-1 border rounded p-1 text-sm" value={editCatName} onChange={e => setEditCatName(e.target.value)} autoFocus />
-                        <button onClick={() => handleSaveCategory(cat.id)} className="bg-green-500 text-white p-1 rounded"><Check className="w-4 h-4"/></button>
+                        <button onClick={() => handleDeleteCategory(cat.id)} className="bg-red-50 text-red-500 p-1.5 rounded hover:bg-red-100"><Trash2 className="w-4 h-4"/></button>
+                        <button onClick={() => handleSaveCategory(cat.id)} className="bg-green-500 text-white p-1.5 rounded hover:bg-green-600"><Check className="w-4 h-4"/></button>
                      </div>
                   ) : (
                     <div className="flex items-center gap-3 cursor-pointer group" onClick={() => handleEditCategory(cat)}>

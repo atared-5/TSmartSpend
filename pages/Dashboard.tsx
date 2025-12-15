@@ -1,17 +1,13 @@
 import React, { useState } from 'react';
 import { useBudget } from '../context/BudgetContext';
 import { SpendingChart } from '../components/Charts';
-import { Plus, Wallet, TrendingUp, ChevronDown, ChevronUp, Sparkles, AlertCircle, Menu, CheckCircle2, Target, X } from 'lucide-react';
+import { Plus, Wallet, ChevronDown, ChevronUp, AlertCircle, Menu, CheckCircle2, Target, X } from 'lucide-react';
 import { Link, useOutletContext, useNavigate } from 'react-router-dom';
-import { analyzeFinances } from '../services/geminiService';
-import { FinancialInsight } from '../types';
 
 export const Dashboard: React.FC = () => {
   const { sources, transactions, categories, addSource, budgets, goals } = useBudget();
   const navigate = useNavigate();
   const [showAllCategories, setShowAllCategories] = useState(false);
-  const [insight, setInsight] = useState<FinancialInsight | null>(null);
-  const [loadingInsight, setLoadingInsight] = useState(false);
   const [isAddingSource, setIsAddingSource] = useState(false);
   const [newSourceName, setNewSourceName] = useState('');
   const [newSourceBalance, setNewSourceBalance] = useState('');
@@ -21,9 +17,19 @@ export const Dashboard: React.FC = () => {
   
   const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
 
-  // Group spending by category
+  // Filter transactions for current month only for the dashboard category list
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  
+  const monthlyTransactions = transactions.filter(t => {
+      const d = new Date(t.date);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+  });
+
+  // Group spending by category (Monthly)
   const categorySpending = categories.map(cat => {
-    const total = transactions
+    const total = monthlyTransactions
       .filter(t => t.categoryId === cat.id)
       .reduce((sum, t) => sum + t.amount, 0);
     return { ...cat, total };
@@ -32,25 +38,15 @@ export const Dashboard: React.FC = () => {
   const topCategories = categorySpending.slice(0, 3);
   const otherCategories = categorySpending.slice(3);
 
-  // Budget calculations for widget (Monthly default)
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
   const activeBudgets = budgets.filter(b => b.limit > 0 && b.period === 'MONTHLY');
 
-  // Selected Category Data for Modal
+  // Selected Category Data for Modal (All time history for that category)
   const selectedCategory = categories.find(c => c.id === selectedCategoryId);
   const selectedCategoryTransactions = selectedCategoryId 
     ? transactions
         .filter(t => t.categoryId === selectedCategoryId)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     : [];
-
-  const handleGeminiAnalysis = async () => {
-    setLoadingInsight(true);
-    const result = await analyzeFinances(transactions, sources, categories);
-    setInsight(result);
-    setLoadingInsight(false);
-  };
 
   const handleAddSource = (e: React.FormEvent) => {
     e.preventDefault();
@@ -246,40 +242,6 @@ export const Dashboard: React.FC = () => {
         </section>
       )}
 
-      {/* Gemini Insight */}
-      <section className="mb-8">
-        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 p-4 rounded-2xl border border-indigo-100">
-           <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-indigo-800">
-                <Sparkles className="w-5 h-5" />
-                <span className="font-semibold text-sm">Smart Insights</span>
-              </div>
-              <button 
-                onClick={handleGeminiAnalysis} 
-                disabled={loadingInsight}
-                className="text-xs bg-white text-indigo-600 px-3 py-1.5 rounded-full shadow-sm font-medium border border-indigo-100 hover:bg-indigo-50 disabled:opacity-50"
-              >
-                {loadingInsight ? 'Analyzing...' : 'Analyze'}
-              </button>
-           </div>
-           
-           {insight ? (
-             <div className="animate-in fade-in duration-500">
-                <p className="text-sm text-slate-700 mb-2 leading-relaxed">{insight.summary}</p>
-                <div className="flex items-start gap-2 bg-white p-3 rounded-lg border border-indigo-50/50 shadow-sm">
-                   <TrendingUp className={`w-4 h-4 mt-0.5 ${insight.spendingTrend === 'increasing' ? 'text-red-500' : 'text-green-500'}`} />
-                   <div>
-                      <p className="text-xs font-bold text-slate-800 uppercase mb-0.5">Tip</p>
-                      <p className="text-xs text-slate-600">{insight.actionableTip}</p>
-                   </div>
-                </div>
-             </div>
-           ) : (
-             <p className="text-xs text-slate-500">Tap analyze to get AI-powered feedback on your spending habits.</p>
-           )}
-        </div>
-      </section>
-
       {/* Charts */}
       <section className="mb-8">
         <SpendingChart />
@@ -287,7 +249,7 @@ export const Dashboard: React.FC = () => {
 
       {/* Category Breakdown */}
       <section>
-        <h2 className="text-lg font-semibold text-slate-800 mb-4">Spending by Category</h2>
+        <h2 className="text-lg font-semibold text-slate-800 mb-4">Spending in {now.toLocaleDateString('default', { month: 'long' })}</h2>
         <div className="space-y-3">
           {topCategories.map(cat => (
              <button 
@@ -299,7 +261,7 @@ export const Dashboard: React.FC = () => {
                   <span className="text-xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full">{cat.icon}</span>
                   <div>
                     <p className="font-medium text-slate-900">{cat.name}</p>
-                    <p className="text-xs text-slate-500">{transactions.filter(t => t.categoryId === cat.id).length} transactions</p>
+                    <p className="text-xs text-slate-500">{monthlyTransactions.filter(t => t.categoryId === cat.id).length} transactions</p>
                   </div>
                 </div>
                 <span className="font-bold text-slate-700">฿{cat.total.toLocaleString()}</span>
@@ -319,7 +281,7 @@ export const Dashboard: React.FC = () => {
                         <span className="text-xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full">{cat.icon}</span>
                         <div>
                           <p className="font-medium text-slate-900">{cat.name}</p>
-                          <p className="text-xs text-slate-500">{transactions.filter(t => t.categoryId === cat.id).length} transactions</p>
+                          <p className="text-xs text-slate-500">{monthlyTransactions.filter(t => t.categoryId === cat.id).length} transactions</p>
                         </div>
                       </div>
                       <span className="font-bold text-slate-700">฿{cat.total.toLocaleString()}</span>
@@ -342,7 +304,7 @@ export const Dashboard: React.FC = () => {
           {categorySpending.every(c => c.total === 0) && (
               <div className="text-center py-8 text-slate-400">
                   <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>No transactions yet.</p>
+                  <p>No transactions this month.</p>
               </div>
           )}
         </div>
@@ -364,7 +326,7 @@ export const Dashboard: React.FC = () => {
                       <span className="text-3xl bg-indigo-50 w-12 h-12 flex items-center justify-center rounded-2xl">{selectedCategory.icon}</span>
                       <div>
                           <h3 className="font-bold text-xl text-slate-900">{selectedCategory.name}</h3>
-                          <p className="text-sm text-slate-500">{selectedCategoryTransactions.length} transactions</p>
+                          <p className="text-sm text-slate-500">{selectedCategoryTransactions.length} transactions total</p>
                       </div>
                   </div>
                   <button onClick={() => setSelectedCategoryId(null)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500">
@@ -389,7 +351,7 @@ export const Dashboard: React.FC = () => {
                                   </div>
                                   <div className="text-right">
                                      <span className="font-bold text-slate-900 block">฿{tx.amount.toLocaleString()}</span>
-                                     <span className="text-[10px] text-slate-400">{new Date(tx.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                     <span className="text-transaction-400 text-[10px] text-slate-400">{new Date(tx.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                                   </div>
                               </div>
                           ))}

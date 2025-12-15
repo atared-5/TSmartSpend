@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useBudget } from '../context/BudgetContext';
 import { SpendingChart } from '../components/Charts';
-import { ArrowLeft, Edit2, Check, X, Wallet, AlertCircle, Save } from 'lucide-react';
+import { ArrowLeft, Edit2, Check, X, Wallet, AlertCircle, Download, Loader2, FileSpreadsheet } from 'lucide-react';
+import { toPng } from 'html-to-image';
+import ExcelJS from 'exceljs';
 
 export const AccountDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +21,7 @@ export const AccountDetails: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editBalance, setEditBalance] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
 
   // Transaction Editing State
   const [editingTxId, setEditingTxId] = useState<string | null>(null);
@@ -64,6 +67,164 @@ export const AccountDetails: React.FC = () => {
     setEditingTxId(null);
   };
 
+  const downloadReport = async () => {
+    setIsExporting(true);
+    try {
+        // 1. Capture the Chart Image
+        const chartNode = document.getElementById('account-chart-capture');
+        let chartImageBase64 = '';
+        if (chartNode) {
+            // Slight delay to ensure render stability
+            await new Promise(r => setTimeout(r, 100));
+            chartImageBase64 = await toPng(chartNode, { backgroundColor: '#ffffff' });
+        }
+
+        // 2. Init Workbook
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet(source.name);
+        
+        // Define Columns
+        sheet.columns = [
+          { header: 'Date', key: 'date', width: 15 },
+          { header: 'Time', key: 'time', width: 10 },
+          { header: 'Category', key: 'category', width: 20 },
+          { header: 'Note', key: 'note', width: 30 },
+          { header: 'Amount', key: 'amount', width: 15 },
+          { header: 'Type', key: 'type', width: 10 },
+        ];
+
+        // 3. Header Info Rows (Insert at top)
+        sheet.insertRow(1, [`Account Report: ${source.name}`]);
+        sheet.insertRow(2, [`Generated on: ${new Date().toLocaleDateString()}`]);
+        sheet.insertRow(3, [`Current Balance: ${source.balance.toLocaleString()}`]);
+        sheet.insertRow(4, ['']); // Spacer
+
+        sheet.getRow(1).font = { bold: true, size: 14 };
+        sheet.getRow(3).font = { bold: true };
+
+        let currentRowIndex = 5;
+
+        // 4. Add Image (if exists)
+        if (chartImageBase64) {
+             // Strip data:image/png;base64, prefix for ExcelJS
+             const base64Data = chartImageBase64.split(',')[1];
+             const imageId = workbook.addImage({
+                 base64: base64Data,
+                 extension: 'png',
+             });
+             
+             // Add image to sheet
+             sheet.addImage(imageId, {
+                 tl: { col: 0.5, row: currentRowIndex - 1 },
+                 br: { col: 5.5, row: currentRowIndex + 19 }
+             });
+
+             currentRowIndex += 21; // Move cursor down past image
+        }
+
+        // 5. Group Data by Month
+        const monthKeys = (Array.from(new Set(sourceTransactions.map(t => {
+            const d = new Date(t.date);
+            return `${d.getMonth()}-${d.getFullYear()}`;
+        }))) as string[]).sort((a, b) => {
+            const [m1, y1] = a.split('-').map(Number);
+            const [m2, y2] = b.split('-').map(Number);
+            return new Date(y2, m2).getTime() - new Date(y1, m1).getTime();
+        });
+
+        for (const key of monthKeys) {
+            const [month, year] = key.split('-').map(Number);
+            const dateObj = new Date(year, month);
+            const monthLabel = dateObj.toLocaleDateString('default', { month: 'long', year: 'numeric' });
+            
+            const monthlyTxs = sourceTransactions.filter(t => {
+                const d = new Date(t.date);
+                return d.getMonth() === month && d.getFullYear() === year;
+            });
+
+            // Month Header
+            const headerRow = sheet.getRow(currentRowIndex);
+            headerRow.values = [monthLabel];
+            headerRow.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+            headerRow.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF4F46E5' } // Indigo
+            };
+            currentRowIndex++;
+
+            // Category Summary
+            sheet.getRow(currentRowIndex).values = ['Category Summary', 'Amount Spent'];
+            sheet.getRow(currentRowIndex).font = { bold: true, italic: true };
+            currentRowIndex++;
+
+            categories.forEach(cat => {
+                const total = monthlyTxs
+                    .filter(t => t.categoryId === cat.id && t.type === 'EXPENSE')
+                    .reduce((acc, t) => acc + t.amount, 0);
+                
+                if (total > 0) {
+                    sheet.getRow(currentRowIndex).values = [`${cat.icon} ${cat.name}`, total];
+                    currentRowIndex++;
+                }
+            });
+
+            currentRowIndex++; // Spacer
+
+            // Transaction Table Headers
+            const txHeaderRow = sheet.getRow(currentRowIndex);
+            txHeaderRow.values = ['Date', 'Time', 'Category', 'Note', 'Amount', 'Type'];
+            txHeaderRow.font = { bold: true };
+            txHeaderRow.border = { bottom: { style: 'thin' } };
+            currentRowIndex++;
+
+            // Transactions
+            monthlyTxs.forEach(t => {
+                const d = new Date(t.date);
+                const catName = categories.find(c => c.id === t.categoryId)?.name || 'Unknown';
+                
+                const row = sheet.getRow(currentRowIndex);
+                row.values = [
+                    d.toLocaleDateString(),
+                    d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                    catName,
+                    t.note || '',
+                    t.amount,
+                    t.type
+                ];
+
+                // Color coding for amount
+                const amountCell = row.getCell(5);
+                if (t.type === 'INCOME') {
+                     amountCell.font = { color: { argb: 'FF16A34A' } }; // Green
+                }
+                
+                currentRowIndex++;
+            });
+
+            currentRowIndex++; 
+            currentRowIndex++; // Spacers
+        }
+
+        // 6. Generate File
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `${source.name.replace(/\s+/g, '_')}_Report.xlsx`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+    } catch (err) {
+        console.error("Export failed", err);
+        alert("Failed to generate report. Please try again.");
+    } finally {
+        setIsExporting(false);
+    }
+  };
+
   return (
     <div className="pb-24">
       {/* Header */}
@@ -77,11 +238,22 @@ export const AccountDetails: React.FC = () => {
             <button onClick={() => navigate('/')} className="p-2 -ml-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-colors">
               <ArrowLeft className="w-6 h-6" />
             </button>
-            {!isEditing && (
-              <button onClick={startEdit} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-colors">
-                <Edit2 className="w-5 h-5" />
-              </button>
-            )}
+            <div className="flex gap-2">
+                <button 
+                    onClick={downloadReport} 
+                    disabled={isExporting}
+                    className="flex items-center gap-2 px-3 py-2 bg-white/20 hover:bg-white/30 rounded-full text-white backdrop-blur-md transition-all disabled:opacity-50" 
+                    title="Download Excel / Google Sheets File"
+                >
+                    {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+                    <span className="text-xs font-bold">Export</span>
+                </button>
+                {!isEditing && (
+                <button onClick={startEdit} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-colors">
+                    <Edit2 className="w-5 h-5" />
+                </button>
+                )}
+            </div>
           </div>
 
           {isEditing ? (
@@ -128,7 +300,7 @@ export const AccountDetails: React.FC = () => {
 
       <div className="px-4 -mt-8 relative z-20 space-y-6">
         {/* Chart */}
-        <section>
+        <section id="account-chart-capture" className="bg-white rounded-2xl overflow-hidden">
           <SpendingChart customTransactions={sourceTransactions} />
         </section>
 

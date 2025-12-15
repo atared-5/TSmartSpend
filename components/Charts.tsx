@@ -12,8 +12,18 @@ export const SpendingChart: React.FC<SpendingChartProps> = ({ customTransactions
   
   const transactionsToUse = customTransactions || allTransactions;
 
+  // Filter for Current Month
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  const monthlyTransactions = transactionsToUse.filter(t => {
+    const d = new Date(t.date);
+    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+  });
+
   const data = categories.map(cat => {
-    const total = transactionsToUse
+    const total = monthlyTransactions
       .filter(t => t.categoryId === cat.id)
       .reduce((sum, t) => sum + t.amount, 0);
     return { name: cat.name, value: total, color: cat.color };
@@ -21,15 +31,22 @@ export const SpendingChart: React.FC<SpendingChartProps> = ({ customTransactions
 
   if (data.length === 0) {
     return (
-      <div className="h-64 flex items-center justify-center bg-white rounded-2xl border border-slate-100 text-slate-400">
-        No spending data yet
+      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+        <h3 className="text-sm font-semibold text-slate-700 mb-4">
+          Spending Breakdown ({now.toLocaleDateString('default', { month: 'long' })})
+        </h3>
+        <div className="h-64 flex items-center justify-center bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-sm">
+          No spending data for this month
+        </div>
       </div>
     );
   }
 
   return (
     <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-      <h3 className="text-sm font-semibold text-slate-700 mb-4">Spending Breakdown</h3>
+      <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        Spending Breakdown ({now.toLocaleDateString('default', { month: 'long' })})
+      </h3>
       <div className="h-64 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>

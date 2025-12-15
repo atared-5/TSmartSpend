@@ -16,6 +16,7 @@ interface BudgetContextType {
   setBudget: (categoryId: string, limit: number, period: BudgetPeriod) => void;
   addCategory: (category: Omit<Category, 'id'>) => void;
   updateCategory: (id: string, updates: Partial<Category>) => void;
+  deleteCategory: (id: string) => void;
   addGoal: (goal: Omit<Goal, 'id'>) => void;
   updateGoal: (id: string, updates: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
@@ -142,6 +143,12 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCategories(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
+  const deleteCategory = (id: string) => {
+    setCategories(prev => prev.filter(c => c.id !== id));
+    // Also remove budgets for this category to avoid orphans
+    setBudgets(prev => prev.filter(b => b.categoryId !== id));
+  };
+
   const addGoal = (goal: Omit<Goal, 'id'>) => {
     setGoals(prev => [...prev, { ...goal, id: crypto.randomUUID() }]);
   };
@@ -171,6 +178,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setBudget,
       addCategory,
       updateCategory,
+      deleteCategory,
       addGoal,
       updateGoal,
       deleteGoal,

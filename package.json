@@ -14,7 +14,9 @@
     "react-router-dom": "^7.10.1",
     "recharts": "^3.5.1",
     "react-dom": "^19.2.3",
-    "lucide-react": "^0.561.0"
+    "lucide-react": "^0.561.0",
+    "html-to-image": "1.11.11",
+    "exceljs": "4.4.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

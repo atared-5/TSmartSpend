@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useBudget } from '../context/BudgetContext';
-import { ArrowLeft, Calendar, Clock, Save, Plus } from 'lucide-react';
-import { TransactionType } from '../types';
+import { ArrowLeft, Calendar, Clock, Save, Plus, Edit2, Trash2, AlertTriangle, X } from 'lucide-react';
+import { TransactionType, Category } from '../types';
 
 export const QuickAdd: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const typeParam = searchParams.get('type'); // 'report' or 'cash' (default)
   
-  const { categories, sources, addTransaction, addCategory } = useBudget();
+  const { categories, sources, addTransaction, addCategory, updateCategory, deleteCategory } = useBudget();
   
   // Default to current time
   const now = new Date();
@@ -27,10 +27,45 @@ export const QuickAdd: React.FC = () => {
   const [time, setTime] = useState(defaultTime);
   const [note, setNote] = useState('');
 
-  // Category addition state
-  const [isAddingCat, setIsAddingCat] = useState(false);
+  // Category addition/editing state
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [newCatName, setNewCatName] = useState('');
   const [newCatIcon, setNewCatIcon] = useState('✨');
+
+  // Context Menu State (for Long Press)
+  const [contextMenuCategory, setContextMenuCategory] = useState<Category | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Long press logic
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressRef = useRef(false);
+
+  const handleTouchStart = (cat: Category) => {
+    isLongPressRef.current = false;
+    // Reset any previous confirm state
+    setShowDeleteConfirm(false); 
+    
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      if (navigator.vibrate) navigator.vibrate(50);
+      setContextMenuCategory(cat);
+    }, 500); // 500ms long press
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleCategoryClick = (catId: string) => {
+    if (isLongPressRef.current) {
+        return;
+    }
+    setCategoryId(catId);
+  };
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -40,16 +75,69 @@ export const QuickAdd: React.FC = () => {
     }
   };
 
-  const handleAddCategory = () => {
+  const handleSaveCategory = () => {
     if (newCatName) {
-        addCategory({
-            name: newCatName,
-            icon: newCatIcon,
-            color: `#${Math.floor(Math.random()*16777215).toString(16)}`
-        });
-        setIsAddingCat(false);
+        if (editingCategoryId) {
+            updateCategory(editingCategoryId, {
+                name: newCatName,
+                icon: newCatIcon
+            });
+        } else {
+            addCategory({
+                name: newCatName,
+                icon: newCatIcon,
+                color: `#${Math.floor(Math.random()*16777215).toString(16)}`
+            });
+        }
+        setIsCategoryModalOpen(false);
         setNewCatName('');
+        setNewCatIcon('✨');
+        setEditingCategoryId(null);
     }
+  };
+
+  const handleEditOption = (e: React.MouseEvent) => {
+      e.stopPropagation(); 
+      e.preventDefault(); 
+      if (contextMenuCategory) {
+          setNewCatName(contextMenuCategory.name);
+          setNewCatIcon(contextMenuCategory.icon);
+          setEditingCategoryId(contextMenuCategory.id);
+          setIsCategoryModalOpen(true);
+          setContextMenuCategory(null);
+      }
+  };
+
+  const handleRequestDelete = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (contextMenuCategory) {
+          deleteCategory(contextMenuCategory.id);
+          if (categoryId === contextMenuCategory.id) {
+              setCategoryId('');
+          }
+          setContextMenuCategory(null);
+          setShowDeleteConfirm(false);
+      }
+  };
+
+  const cancelDelete = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      setShowDeleteConfirm(false);
+  };
+
+  const openAddCategoryModal = () => {
+      setEditingCategoryId(null);
+      setNewCatName('');
+      setNewCatIcon('✨');
+      setIsCategoryModalOpen(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -139,31 +227,80 @@ export const QuickAdd: React.FC = () => {
               <button
                 key={cat.id}
                 type="button"
-                onClick={() => setCategoryId(cat.id)}
-                className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${categoryId === cat.id ? 'bg-indigo-50 border-indigo-600 shadow-sm' : 'bg-white border-slate-100 hover:border-indigo-200'}`}
+                onContextMenu={(e) => e.preventDefault()}
+                onMouseDown={() => handleTouchStart(cat)}
+                onMouseUp={handleTouchEnd}
+                onMouseLeave={handleTouchEnd}
+                onTouchStart={() => handleTouchStart(cat)}
+                onTouchEnd={handleTouchEnd}
+                onTouchMove={handleTouchEnd} // Cancel long press if scrolling
+                onClick={() => handleCategoryClick(cat.id)}
+                className={`relative flex flex-col items-center justify-center p-3 rounded-xl border transition-all select-none touch-manipulation ${categoryId === cat.id ? 'bg-indigo-50 border-indigo-600 shadow-sm' : 'bg-white border-slate-100 hover:border-indigo-200'}`}
               >
-                <span className="text-2xl mb-1">{cat.icon}</span>
-                <span className={`text-xs font-medium ${categoryId === cat.id ? 'text-indigo-700' : 'text-slate-600'}`}>{cat.name}</span>
+                <span className="text-2xl mb-1 pointer-events-none">{cat.icon}</span>
+                <span className={`text-xs font-medium pointer-events-none ${categoryId === cat.id ? 'text-indigo-700' : 'text-slate-600'}`}>{cat.name}</span>
               </button>
             ))}
             
             {/* Add Category Button */}
             <button
                type="button"
-               onClick={() => setIsAddingCat(true)}
+               onClick={openAddCategoryModal}
                className="flex flex-col items-center justify-center p-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 transition-all"
             >
                 <Plus className="w-6 h-6 text-slate-400 mb-1" />
                 <span className="text-xs font-medium text-slate-500">Add New</span>
             </button>
           </div>
+          <p className="text-[10px] text-slate-400 mt-2 text-center">Long press a category to edit or delete.</p>
         </div>
 
-        {/* Add Category Modal/Inline */}
-        {isAddingCat && (
+        {/* Context Menu for Categories */}
+        {contextMenuCategory && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => setContextMenuCategory(null)}>
+                <div className="bg-white rounded-2xl shadow-2xl p-4 w-64 animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center gap-3 mb-4 p-2 border-b border-slate-100 pb-4">
+                        <span className="text-2xl">{contextMenuCategory.icon}</span>
+                        <span className="font-bold text-slate-900 line-clamp-1">{contextMenuCategory.name}</span>
+                    </div>
+                    
+                    {!showDeleteConfirm ? (
+                        <div className="space-y-2">
+                            <button type="button" onClick={handleEditOption} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 text-slate-700 font-medium transition-colors">
+                                <Edit2 className="w-4 h-4 text-indigo-600" /> Edit Category
+                            </button>
+                            <button type="button" onClick={handleRequestDelete} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 text-red-600 font-medium transition-colors">
+                                <Trash2 className="w-4 h-4" /> Delete Category
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
+                            <div className="text-center p-2">
+                                <div className="bg-red-100 w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 text-red-500">
+                                    <AlertTriangle className="w-5 h-5" />
+                                </div>
+                                <p className="text-sm font-bold text-slate-800">Are you sure?</p>
+                                <p className="text-xs text-slate-500 mt-1">Transactions will become uncategorized.</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <button type="button" onClick={cancelDelete} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-bold">
+                                    Cancel
+                                </button>
+                                <button type="button" onClick={confirmDelete} className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-bold">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        )}
+
+        {/* Add/Edit Category Modal */}
+        {isCategoryModalOpen && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                 <div className="bg-white rounded-2xl p-6 w-full max-w-sm animate-in fade-in zoom-in-95">
-                    <h3 className="text-lg font-bold text-slate-900 mb-4">Add Category</h3>
+                    <h3 className="text-lg font-bold text-slate-900 mb-4">{editingCategoryId ? 'Edit Category' : 'Add Category'}</h3>
                     <div className="flex gap-3 mb-4">
                         <input 
                            className="w-14 border rounded-lg p-2 text-center text-2xl" 
@@ -180,8 +317,10 @@ export const QuickAdd: React.FC = () => {
                         />
                     </div>
                     <div className="flex gap-2">
-                        <button type="button" onClick={() => setIsAddingCat(false)} className="flex-1 py-3 text-slate-500 font-medium">Cancel</button>
-                        <button type="button" onClick={handleAddCategory} className="flex-1 py-3 bg-indigo-600 text-white rounded-lg font-bold">Add</button>
+                        <button type="button" onClick={() => setIsCategoryModalOpen(false)} className="flex-1 py-3 text-slate-500 font-medium">Cancel</button>
+                        <button type="button" onClick={handleSaveCategory} className="flex-1 py-3 bg-indigo-600 text-white rounded-lg font-bold">
+                            {editingCategoryId ? 'Save' : 'Add'}
+                        </button>
                     </div>
                 </div>
             </div>
