@@ -1,23 +1,26 @@
 import React, { useState } from 'react';
 import { useBudget } from '../context/BudgetContext';
 import { SpendingChart } from '../components/Charts';
-import { Plus, Wallet, ChevronDown, ChevronUp, AlertCircle, Menu, CheckCircle2, Target, X } from 'lucide-react';
+import { Plus, Wallet, ChevronDown, ChevronUp, AlertCircle, Menu, CheckCircle2, Target, X, List, PieChart } from 'lucide-react';
 import { Link, useOutletContext, useNavigate } from 'react-router-dom';
 
 export const Dashboard: React.FC = () => {
   const { sources, transactions, categories, addSource, budgets, goals } = useBudget();
   const navigate = useNavigate();
-  const [showAllCategories, setShowAllCategories] = useState(false);
   const [isAddingSource, setIsAddingSource] = useState(false);
   const [newSourceName, setNewSourceName] = useState('');
   const [newSourceBalance, setNewSourceBalance] = useState('');
+  
+  // View Toggle State: 'transactions' (Latest) or 'breakdown' (Totals)
+  const [viewMode, setViewMode] = useState<'transactions' | 'breakdown'>('transactions');
+  const [showAllCategories, setShowAllCategories] = useState(false);
   
   // State for category detail modal
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   
   const { toggleSidebar } = useOutletContext<{ toggleSidebar: () => void }>();
 
-  // Filter transactions for current month only for the dashboard category list
+  // Filter transactions for current month
   const now = new Date();
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
@@ -27,11 +30,15 @@ export const Dashboard: React.FC = () => {
       return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
   });
 
-  // Group spending by category (Monthly)
+  // Sort by date descending (newest first)
+  monthlyTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Group spending by category (Monthly) for Breakdown View
   const categorySpending = categories.map(cat => {
     const total = monthlyTransactions
       .filter(t => t.categoryId === cat.id)
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + t.amount, 0); // Note: showing raw total (incomes + expenses mixed if same cat, usually categories are one type)
+                                               // ideally we filter for Expenses mostly for spending chart, but logic remains same as before.
     return { ...cat, total };
   }).sort((a, b) => b.total - a.total);
 
@@ -247,65 +254,116 @@ export const Dashboard: React.FC = () => {
         <SpendingChart />
       </section>
 
-      {/* Category Breakdown */}
+      {/* Monthly Activity Section */}
       <section>
-        <h2 className="text-lg font-semibold text-slate-800 mb-4">Spending in {now.toLocaleDateString('default', { month: 'long' })}</h2>
-        <div className="space-y-3">
-          {topCategories.map(cat => (
-             <button 
-                key={cat.id} 
-                onClick={() => setSelectedCategoryId(cat.id)}
-                className="w-full flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-50 hover:bg-slate-50 transition-all active:scale-[0.99] text-left"
-             >
-                <div className="flex items-center gap-3">
-                  <span className="text-xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full">{cat.icon}</span>
-                  <div>
-                    <p className="font-medium text-slate-900">{cat.name}</p>
-                    <p className="text-xs text-slate-500">{monthlyTransactions.filter(t => t.categoryId === cat.id).length} transactions</p>
-                  </div>
-                </div>
-                <span className="font-bold text-slate-700">฿{cat.total.toLocaleString()}</span>
-             </button>
-          ))}
-
-          {otherCategories.length > 0 && (
-            <>
-              <div className={`space-y-3 overflow-hidden transition-all duration-300 ${showAllCategories ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-                {otherCategories.map(cat => (
-                  <button 
-                    key={cat.id} 
-                    onClick={() => setSelectedCategoryId(cat.id)}
-                    className="w-full flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-50 hover:bg-slate-50 transition-all active:scale-[0.99] text-left"
-                  >
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full">{cat.icon}</span>
-                        <div>
-                          <p className="font-medium text-slate-900">{cat.name}</p>
-                          <p className="text-xs text-slate-500">{monthlyTransactions.filter(t => t.categoryId === cat.id).length} transactions</p>
-                        </div>
-                      </div>
-                      <span className="font-bold text-slate-700">฿{cat.total.toLocaleString()}</span>
-                  </button>
-                ))}
-              </div>
-              <button 
-                onClick={() => setShowAllCategories(!showAllCategories)}
-                className="w-full flex items-center justify-center gap-2 text-slate-500 text-sm font-medium py-2 hover:text-slate-700"
-              >
-                {showAllCategories ? (
-                  <>Show Less <ChevronUp className="w-4 h-4" /></>
-                ) : (
-                  <>View All Categories <ChevronDown className="w-4 h-4" /></>
-                )}
-              </button>
-            </>
-          )}
-
-          {categorySpending.every(c => c.total === 0) && (
-              <div className="text-center py-8 text-slate-400">
+        <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-slate-800">
+                Activity in {now.toLocaleDateString('default', { month: 'long' })}
+            </h2>
+            
+            {/* View Toggle */}
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+                <button 
+                    onClick={() => setViewMode('transactions')}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'transactions' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                    <List className="w-3.5 h-3.5" /> Latest
+                </button>
+                <button 
+                    onClick={() => setViewMode('breakdown')}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${viewMode === 'breakdown' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                    <PieChart className="w-3.5 h-3.5" /> Breakdown
+                </button>
+            </div>
+        </div>
+        
+        <div className="space-y-3 min-h-[200px]">
+          {monthlyTransactions.length === 0 ? (
+               <div className="text-center py-12 text-slate-400 bg-white rounded-2xl border border-slate-100 border-dashed">
                   <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
                   <p>No transactions this month.</p>
-              </div>
+               </div>
+          ) : viewMode === 'transactions' ? (
+            /* --- Transactions View --- */
+            <div className="animate-in fade-in slide-in-from-bottom-2 space-y-3">
+               {monthlyTransactions.map(tx => {
+                  const cat = categories.find(c => c.id === tx.categoryId);
+                  const isExpense = tx.type === 'EXPENSE';
+                  return (
+                      <div key={tx.id} className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-50">
+                          <div className="flex items-center gap-3 overflow-hidden">
+                              <span className="text-xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full shrink-0">
+                                  {cat?.icon || '💸'}
+                              </span>
+                              <div className="min-w-0">
+                                  <p className="font-medium text-slate-900 truncate">{cat?.name || 'Uncategorized'}</p>
+                                  {tx.note && <p className="text-xs text-slate-500 truncate">{tx.note}</p>}
+                                  <p className="text-[10px] text-slate-400 mt-0.5">
+                                      {new Date(tx.date).toLocaleDateString(undefined, {month:'short', day:'numeric'})} • {new Date(tx.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                                  </p>
+                              </div>
+                          </div>
+                          <span className={`font-bold whitespace-nowrap ml-2 ${isExpense ? 'text-slate-900' : 'text-green-600'}`}>
+                              {isExpense ? '- ' : '+ '}฿{tx.amount.toLocaleString()}
+                          </span>
+                      </div>
+                  );
+               })}
+            </div>
+          ) : (
+            /* --- Category Breakdown View (Old Logic) --- */
+            <div className="animate-in fade-in slide-in-from-bottom-2 space-y-3">
+                {topCategories.map(cat => (
+                    <button 
+                        key={cat.id} 
+                        onClick={() => setSelectedCategoryId(cat.id)}
+                        className="w-full flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-50 hover:bg-slate-50 transition-all active:scale-[0.99] text-left"
+                    >
+                        <div className="flex items-center gap-3">
+                        <span className="text-xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full">{cat.icon}</span>
+                        <div>
+                            <p className="font-medium text-slate-900">{cat.name}</p>
+                            <p className="text-xs text-slate-500">{monthlyTransactions.filter(t => t.categoryId === cat.id).length} transactions</p>
+                        </div>
+                        </div>
+                        <span className="font-bold text-slate-700">฿{cat.total.toLocaleString()}</span>
+                    </button>
+                ))}
+
+                {otherCategories.length > 0 && (
+                    <>
+                    <div className={`space-y-3 overflow-hidden transition-all duration-300 ${showAllCategories ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
+                        {otherCategories.map(cat => (
+                        <button 
+                            key={cat.id} 
+                            onClick={() => setSelectedCategoryId(cat.id)}
+                            className="w-full flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-50 hover:bg-slate-50 transition-all active:scale-[0.99] text-left"
+                        >
+                            <div className="flex items-center gap-3">
+                                <span className="text-xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full">{cat.icon}</span>
+                                <div>
+                                <p className="font-medium text-slate-900">{cat.name}</p>
+                                <p className="text-xs text-slate-500">{monthlyTransactions.filter(t => t.categoryId === cat.id).length} transactions</p>
+                                </div>
+                            </div>
+                            <span className="font-bold text-slate-700">฿{cat.total.toLocaleString()}</span>
+                        </button>
+                        ))}
+                    </div>
+                    <button 
+                        onClick={() => setShowAllCategories(!showAllCategories)}
+                        className="w-full flex items-center justify-center gap-2 text-slate-500 text-sm font-medium py-2 hover:text-slate-700"
+                    >
+                        {showAllCategories ? (
+                        <>Show Less <ChevronUp className="w-4 h-4" /></>
+                        ) : (
+                        <>View All Categories <ChevronDown className="w-4 h-4" /></>
+                        )}
+                    </button>
+                    </>
+                )}
+            </div>
           )}
         </div>
       </section>
