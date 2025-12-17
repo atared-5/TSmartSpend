@@ -13,6 +13,7 @@ export const Dashboard: React.FC = () => {
   
   // View Toggle State: 'transactions' (Latest) or 'breakdown' (Totals)
   const [viewMode, setViewMode] = useState<'transactions' | 'breakdown'>('transactions');
+  const [visibleCount, setVisibleCount] = useState(4);
   const [showAllCategories, setShowAllCategories] = useState(false);
   
   // State for category detail modal
@@ -287,7 +288,7 @@ export const Dashboard: React.FC = () => {
           ) : viewMode === 'transactions' ? (
             /* --- Transactions View --- */
             <div className="animate-in fade-in slide-in-from-bottom-2 space-y-3">
-               {monthlyTransactions.map(tx => {
+               {monthlyTransactions.slice(0, visibleCount).map(tx => {
                   const cat = categories.find(c => c.id === tx.categoryId);
                   const isExpense = tx.type === 'EXPENSE';
                   return (
@@ -310,6 +311,19 @@ export const Dashboard: React.FC = () => {
                       </div>
                   );
                })}
+               
+               {monthlyTransactions.length > 4 && (
+                   <button 
+                     onClick={() => setVisibleCount(visibleCount === 4 ? monthlyTransactions.length : 4)}
+                     className="w-full py-2 text-sm text-indigo-600 font-medium hover:bg-indigo-50 rounded-lg transition-colors flex items-center justify-center gap-1"
+                   >
+                     {visibleCount === 4 ? (
+                        <>Show More <ChevronDown className="w-4 h-4" /></>
+                     ) : (
+                        <>Show Less <ChevronUp className="w-4 h-4" /></>
+                     )}
+                   </button>
+               )}
             </div>
           ) : (
             /* --- Category Breakdown View (Old Logic) --- */
