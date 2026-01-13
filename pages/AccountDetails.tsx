@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useBudget } from '../context/BudgetContext';
 import { SpendingChart } from '../components/Charts';
-import { ArrowLeft, Edit2, Check, X, Wallet, AlertCircle, Download, Loader2, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, Edit2, Check, X, Wallet, AlertCircle, Loader2, FileSpreadsheet, Trash2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import ExcelJS from 'exceljs';
 
 export const AccountDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { sources, transactions, categories, updateSource, updateTransaction } = useBudget();
+  const location = useLocation();
+  const { sources, transactions, categories, updateSource, updateTransaction, deleteTransaction } = useBudget();
   
   const source = sources.find(s => s.id === id);
+  const highlightedTxId = (location.state as any)?.highlightedTxId;
   
   // Filter transactions for this source and sort by date descending (newest first)
   const sourceTransactions = transactions
@@ -27,6 +29,17 @@ export const AccountDetails: React.FC = () => {
   const [editingTxId, setEditingTxId] = useState<string | null>(null);
   const [editTxAmount, setEditTxAmount] = useState('');
   const [editTxNote, setEditTxNote] = useState('');
+  const [editTxSourceId, setEditTxSourceId] = useState('');
+
+  // Scroll to highlighted transaction if it exists
+  useEffect(() => {
+      if (highlightedTxId) {
+          const element = document.getElementById(`tx-${highlightedTxId}`);
+          if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+      }
+  }, [highlightedTxId]);
 
   if (!source) {
     return <div className="p-6 text-center text-slate-500">Account not found</div>;
@@ -57,14 +70,22 @@ export const AccountDetails: React.FC = () => {
     setEditingTxId(tx.id);
     setEditTxAmount(tx.amount.toString());
     setEditTxNote(tx.note || '');
+    setEditTxSourceId(tx.sourceId);
   };
 
-  const saveTxEdit = (id: string) => {
-    updateTransaction(id, {
+  const saveTxEdit = (txId: string) => {
+    updateTransaction(txId, {
         amount: parseFloat(editTxAmount),
-        note: editTxNote
+        note: editTxNote,
+        sourceId: editTxSourceId
     });
     setEditingTxId(null);
+  };
+
+  const handleDeleteTx = (txId: string) => {
+      if (window.confirm("Are you sure you want to delete this transaction? This will update your account balance.")) {
+          deleteTransaction(txId);
+      }
   };
 
   const downloadReport = async () => {
@@ -74,7 +95,6 @@ export const AccountDetails: React.FC = () => {
         const chartNode = document.getElementById('account-chart-capture');
         let chartImageBase64 = '';
         if (chartNode) {
-            // Slight delay to ensure render stability
             await new Promise(r => setTimeout(r, 100));
             chartImageBase64 = await toPng(chartNode, { backgroundColor: '#ffffff' });
         }
@@ -83,7 +103,6 @@ export const AccountDetails: React.FC = () => {
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet(source.name);
         
-        // Define Columns
         sheet.columns = [
           { header: 'Date', key: 'date', width: 15 },
           { header: 'Time', key: 'time', width: 10 },
@@ -93,36 +112,31 @@ export const AccountDetails: React.FC = () => {
           { header: 'Type', key: 'type', width: 10 },
         ];
 
-        // 3. Header Info Rows (Insert at top)
         sheet.insertRow(1, [`Account Report: ${source.name}`]);
         sheet.insertRow(2, [`Generated on: ${new Date().toLocaleDateString()}`]);
         sheet.insertRow(3, [`Current Balance: ${source.balance.toLocaleString()}`]);
-        sheet.insertRow(4, ['']); // Spacer
+        sheet.insertRow(4, ['']); 
 
         sheet.getRow(1).font = { bold: true, size: 14 };
         sheet.getRow(3).font = { bold: true };
 
         let currentRowIndex = 5;
 
-        // 4. Add Image (if exists)
         if (chartImageBase64) {
-             // Strip data:image/png;base64, prefix for ExcelJS
              const base64Data = chartImageBase64.split(',')[1];
              const imageId = workbook.addImage({
                  base64: base64Data,
                  extension: 'png',
              });
              
-             // Add image to sheet
              sheet.addImage(imageId, {
                  tl: { col: 0.5, row: currentRowIndex - 1 },
                  br: { col: 5.5, row: currentRowIndex + 19 }
              });
 
-             currentRowIndex += 21; // Move cursor down past image
+             currentRowIndex += 21; 
         }
 
-        // 5. Group Data by Month
         const monthKeys = (Array.from(new Set(sourceTransactions.map(t => {
             const d = new Date(t.date);
             return `${d.getMonth()}-${d.getFullYear()}`;
@@ -142,18 +156,16 @@ export const AccountDetails: React.FC = () => {
                 return d.getMonth() === month && d.getFullYear() === year;
             });
 
-            // Month Header
             const headerRow = sheet.getRow(currentRowIndex);
             headerRow.values = [monthLabel];
             headerRow.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
             headerRow.fill = {
                 type: 'pattern',
                 pattern: 'solid',
-                fgColor: { argb: 'FF4F46E5' } // Indigo
+                fgColor: { argb: 'FF4F46E5' } 
             };
             currentRowIndex++;
 
-            // Category Summary
             sheet.getRow(currentRowIndex).values = ['Category Summary', 'Amount Spent'];
             sheet.getRow(currentRowIndex).font = { bold: true, italic: true };
             currentRowIndex++;
@@ -169,16 +181,14 @@ export const AccountDetails: React.FC = () => {
                 }
             });
 
-            currentRowIndex++; // Spacer
+            currentRowIndex++; 
 
-            // Transaction Table Headers
             const txHeaderRow = sheet.getRow(currentRowIndex);
             txHeaderRow.values = ['Date', 'Time', 'Category', 'Note', 'Amount', 'Type'];
             txHeaderRow.font = { bold: true };
             txHeaderRow.border = { bottom: { style: 'thin' } };
             currentRowIndex++;
 
-            // Transactions
             monthlyTxs.forEach(t => {
                 const d = new Date(t.date);
                 const catName = categories.find(c => c.id === t.categoryId)?.name || 'Unknown';
@@ -193,20 +203,18 @@ export const AccountDetails: React.FC = () => {
                     t.type
                 ];
 
-                // Color coding for amount
                 const amountCell = row.getCell(5);
                 if (t.type === 'INCOME') {
-                     amountCell.font = { color: { argb: 'FF16A34A' } }; // Green
+                     amountCell.font = { color: { argb: 'FF16A34A' } }; 
                 }
                 
                 currentRowIndex++;
             });
 
             currentRowIndex++; 
-            currentRowIndex++; // Spacers
+            currentRowIndex++; 
         }
 
-        // 6. Generate File
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = URL.createObjectURL(blob);
@@ -312,22 +320,39 @@ export const AccountDetails: React.FC = () => {
               {sourceTransactions.map(tx => {
                 const category = categories.find(c => c.id === tx.categoryId);
                 const isTxEditing = editingTxId === tx.id;
+                const isHighlighted = highlightedTxId === tx.id;
 
                 return (
-                  <div key={tx.id} className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center justify-between group">
+                  <div 
+                    key={tx.id} 
+                    id={`tx-${tx.id}`}
+                    className={`bg-white p-4 rounded-xl border shadow-sm flex items-center justify-between group transition-all duration-500 ${isHighlighted ? 'ring-2 ring-indigo-500 animate-pulse' : 'border-slate-100'}`}
+                  >
                     <div className="flex items-start gap-3 flex-1 min-w-0">
                       <div className="text-2xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full shrink-0">
                         {category?.icon || '💸'}
                       </div>
                       
                       {isTxEditing ? (
-                        <div className="flex-1 space-y-2 pr-2">
-                           <input 
-                              type="number" 
-                              value={editTxAmount} 
-                              onChange={e => setEditTxAmount(e.target.value)}
-                              className="w-full border rounded p-1 text-sm font-bold"
-                           />
+                        <div className="flex-1 space-y-2 pr-2 animate-in fade-in">
+                           <div className="flex gap-2">
+                               <input 
+                                  type="number" 
+                                  value={editTxAmount} 
+                                  onChange={e => setEditTxAmount(e.target.value)}
+                                  className="flex-1 border rounded p-1 text-sm font-bold"
+                                  autoFocus
+                               />
+                               <select 
+                                  value={editTxSourceId}
+                                  onChange={e => setEditTxSourceId(e.target.value)}
+                                  className="text-xs border rounded p-1 bg-white"
+                               >
+                                  {sources.map(s => (
+                                      <option key={s.id} value={s.id}>{s.name}</option>
+                                  ))}
+                               </select>
+                           </div>
                            <input 
                               type="text" 
                               value={editTxNote} 
@@ -349,19 +374,28 @@ export const AccountDetails: React.FC = () => {
 
                     <div className="flex items-center gap-2 pl-2">
                         {isTxEditing ? (
-                           <>
-                             <button onClick={() => saveTxEdit(tx.id)} className="bg-indigo-600 text-white p-1 rounded"><Check className="w-4 h-4" /></button>
-                             <button onClick={() => setEditingTxId(null)} className="text-slate-400 p-1"><X className="w-4 h-4" /></button>
-                           </>
-                        ) : (
-                           <>
-                             <span className={`font-bold whitespace-nowrap ${tx.amount > 0 ? 'text-slate-900' : 'text-green-600'}`}>
-                               {tx.amount < 0 ? '+' : '-'} ฿{Math.abs(tx.amount).toLocaleString()}
-                             </span>
-                             <button onClick={() => startTxEdit(tx)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-indigo-600 transition-all">
-                                <Edit2 className="w-4 h-4" />
+                           <div className="flex flex-col gap-1">
+                             <button onClick={() => saveTxEdit(tx.id)} className="bg-indigo-600 text-white p-2 rounded-lg shadow-sm">
+                               <Check className="w-4 h-4" />
                              </button>
-                           </>
+                             <button onClick={() => setEditingTxId(null)} className="text-slate-400 p-2 hover:bg-slate-50 rounded-lg">
+                               <X className="w-4 h-4" />
+                             </button>
+                           </div>
+                        ) : (
+                           <div className="flex items-center gap-3">
+                             <span className={`font-bold whitespace-nowrap ${tx.type === 'INCOME' ? 'text-green-600' : 'text-slate-900'}`}>
+                               {tx.type === 'INCOME' ? '+' : '-'} ฿{tx.amount.toLocaleString()}
+                             </span>
+                             <div className="flex opacity-0 group-hover:opacity-100 transition-all">
+                                <button onClick={() => startTxEdit(tx)} className="p-2 text-slate-300 hover:text-indigo-600">
+                                    <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => handleDeleteTx(tx.id)} className="p-2 text-slate-300 hover:text-red-500">
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                             </div>
+                           </div>
                         )}
                     </div>
                   </div>

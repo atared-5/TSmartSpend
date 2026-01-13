@@ -38,8 +38,7 @@ export const Dashboard: React.FC = () => {
   const categorySpending = categories.map(cat => {
     const total = monthlyTransactions
       .filter(t => t.categoryId === cat.id)
-      .reduce((sum, t) => sum + t.amount, 0); // Note: showing raw total (incomes + expenses mixed if same cat, usually categories are one type)
-                                               // ideally we filter for Expenses mostly for spending chart, but logic remains same as before.
+      .reduce((sum, t) => sum + t.amount, 0); 
     return { ...cat, total };
   }).sort((a, b) => b.total - a.total);
 
@@ -77,6 +76,10 @@ export const Dashboard: React.FC = () => {
       setNewSourceBalance('');
       setIsAddingSource(false);
     }
+  };
+
+  const handleTransactionClick = (sourceId: string, txId: string) => {
+    navigate(`/account/${sourceId}`, { state: { highlightedTxId: txId } });
   };
 
   return (
@@ -290,25 +293,37 @@ export const Dashboard: React.FC = () => {
             <div className="animate-in fade-in slide-in-from-bottom-2 space-y-3">
                {monthlyTransactions.slice(0, visibleCount).map(tx => {
                   const cat = categories.find(c => c.id === tx.categoryId);
+                  const source = sources.find(s => s.id === tx.sourceId);
                   const isExpense = tx.type === 'EXPENSE';
                   return (
-                      <div key={tx.id} className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-50">
+                      <button 
+                        key={tx.id} 
+                        onClick={() => handleTransactionClick(tx.sourceId, tx.id)}
+                        className={`w-full text-left flex items-center justify-between p-4 rounded-xl shadow-md transition-all active:scale-[0.98] border border-white/10 ${source?.color || 'bg-white text-slate-900'}`}
+                      >
                           <div className="flex items-center gap-3 overflow-hidden">
-                              <span className="text-xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full shrink-0">
+                              <span className="text-xl bg-white/20 w-10 h-10 flex items-center justify-center rounded-full shrink-0">
                                   {cat?.icon || '💸'}
                               </span>
                               <div className="min-w-0">
-                                  <p className="font-medium text-slate-900 truncate">{cat?.name || 'Uncategorized'}</p>
-                                  {tx.note && <p className="text-xs text-slate-500 truncate">{tx.note}</p>}
-                                  <p className="text-[10px] text-slate-400 mt-0.5">
+                                  <div className="flex items-center gap-2">
+                                      <p className={`font-bold truncate ${source ? 'text-white' : 'text-slate-900'}`}>{cat?.name || 'Uncategorized'}</p>
+                                      {source && (
+                                          <span className="text-[10px] font-black uppercase tracking-widest opacity-60 text-white">
+                                              {source.name}
+                                          </span>
+                                      )}
+                                  </div>
+                                  {tx.note && <p className={`text-xs truncate ${source ? 'text-white/80' : 'text-slate-500'}`}>{tx.note}</p>}
+                                  <p className={`text-[10px] mt-0.5 font-medium ${source ? 'text-white/60' : 'text-slate-400'}`}>
                                       {new Date(tx.date).toLocaleDateString(undefined, {month:'short', day:'numeric'})} • {new Date(tx.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
                                   </p>
                               </div>
                           </div>
-                          <span className={`font-bold whitespace-nowrap ml-2 ${isExpense ? 'text-slate-900' : 'text-green-600'}`}>
+                          <span className={`font-black whitespace-nowrap ml-2 text-lg ${source ? 'text-white' : (isExpense ? 'text-slate-900' : 'text-green-600')}`}>
                               {isExpense ? '- ' : '+ '}฿{tx.amount.toLocaleString()}
                           </span>
-                      </div>
+                      </button>
                   );
                })}
                
