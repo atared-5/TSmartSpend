@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useBudget } from '../context/BudgetContext';
 import { SpendingChart } from '../components/Charts';
-import { ArrowLeft, Edit2, Check, X, Wallet, AlertCircle, Loader2, FileSpreadsheet, Trash2, Calendar as CalendarIcon } from 'lucide-react';
+import { ArrowLeft, Edit2, Check, X, Wallet, AlertCircle, Loader2, FileSpreadsheet, Trash2, Calendar as CalendarIcon, Filter, ChevronRight } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import ExcelJS from 'exceljs';
 import { Transaction } from '../types';
@@ -15,13 +15,36 @@ export const AccountDetails: React.FC = () => {
   
   const source = sources.find(s => s.id === id);
   const highlightedTxId = (location.state as any)?.highlightedTxId;
-  
-  // Filter transactions for this source and sort by date descending (newest first)
+
+  // View Filter State
+  const now = new Date();
+  const [viewMonth, setViewMonth] = useState(now.getMonth());
+  const [viewYear, setViewYear] = useState(now.getFullYear());
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filterStep, setFilterStep] = useState<'YEAR' | 'MONTH'>('YEAR');
+  const [tempYear, setTempYear] = useState(now.getFullYear());
+
+  // Available Years from transactions
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    years.add(now.getFullYear());
+    transactions.forEach(t => {
+        years.add(new Date(t.date).getFullYear());
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [transactions]);
+
+  // Filter transactions for this source AND selected month/year
   const sourceTransactions = useMemo(() => {
     return transactions
-      .filter(t => t.sourceId === id)
+      .filter(t => {
+          const d = new Date(t.date);
+          return t.sourceId === id && 
+                 d.getMonth() === viewMonth && 
+                 d.getFullYear() === viewYear;
+      })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, id]);
+  }, [transactions, id, viewMonth, viewYear]);
 
   // Group transactions by date
   const groupedTransactions = useMemo(() => {
@@ -56,15 +79,21 @@ export const AccountDetails: React.FC = () => {
   // Scroll to highlighted transaction if it exists
   useEffect(() => {
       if (highlightedTxId) {
+          const tx = transactions.find(t => t.id === highlightedTxId);
+          if (tx) {
+              const d = new Date(tx.date);
+              setViewMonth(d.getMonth());
+              setViewYear(d.getFullYear());
+          }
           const timer = setTimeout(() => {
               const element = document.getElementById(`tx-${highlightedTxId}`);
               if (element) {
                   element.scrollIntoView({ behavior: 'smooth', block: 'center' });
               }
-          }, 100);
+          }, 200);
           return () => clearTimeout(timer);
       }
-  }, [highlightedTxId]);
+  }, [highlightedTxId, transactions]);
 
   if (!source) {
     return <div className="p-6 text-center text-slate-500">Account not found</div>;
@@ -90,7 +119,6 @@ export const AccountDetails: React.FC = () => {
     }
   };
 
-  // Transaction Editing Helpers
   const startTxEdit = (tx: any) => {
     setEditingTxId(tx.id);
     setEditTxAmount(tx.amount.toString());
@@ -112,6 +140,23 @@ export const AccountDetails: React.FC = () => {
           deleteTransaction(txId);
       }
   };
+
+  const selectYear = (year: number) => {
+      setTempYear(year);
+      setFilterStep('MONTH');
+  };
+
+  const selectMonth = (month: number) => {
+      setViewYear(tempYear);
+      setViewMonth(month);
+      setIsFilterOpen(false);
+      setFilterStep('YEAR');
+  };
+
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
 
   const downloadReport = async () => {
     setIsExporting(true);
@@ -160,7 +205,9 @@ export const AccountDetails: React.FC = () => {
              currentRowIndex += 21; 
         }
 
-        const monthKeys = (Array.from(new Set(sourceTransactions.map(t => {
+        const filteredTxsForReport = transactions.filter(t => t.sourceId === id);
+
+        const monthKeys = (Array.from(new Set(filteredTxsForReport.map(t => {
             const d = new Date(t.date);
             return `${d.getMonth()}-${d.getFullYear()}`;
         }))) as string[]).sort((a, b) => {
@@ -174,7 +221,7 @@ export const AccountDetails: React.FC = () => {
             const dateObj = new Date(year, month);
             const monthLabel = dateObj.toLocaleDateString('default', { month: 'long', year: 'numeric' });
             
-            const monthlyTxs = sourceTransactions.filter(t => {
+            const monthlyTxs = filteredTxsForReport.filter(t => {
                 const d = new Date(t.date);
                 return d.getMonth() === month && d.getFullYear() === year;
             });
@@ -337,15 +384,25 @@ export const AccountDetails: React.FC = () => {
 
         {/* Transactions List */}
         <section>
-          <h2 className="text-lg font-bold text-slate-800 mb-4 px-1 flex items-center gap-2">
-              History
-          </h2>
+          <div className="flex items-center justify-between mb-4 px-1">
+              <h2 className="text-lg font-bold text-slate-800 flex flex-col">
+                  History
+                  <span className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">
+                      {monthNames[viewMonth]} {viewYear}
+                  </span>
+              </h2>
+              <button 
+                onClick={() => setIsFilterOpen(true)}
+                className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm text-xs font-bold text-indigo-600 hover:bg-slate-50 transition-colors"
+              >
+                  <Filter className="w-3.5 h-3.5" /> Filter
+              </button>
+          </div>
           
           {dateKeys.length > 0 ? (
             <div className="space-y-8">
               {dateKeys.map(dateKey => (
                 <div key={dateKey} className="space-y-3">
-                  {/* Sticky Date Header */}
                   <div className="sticky top-0 z-30 py-2 -mx-4 px-4 bg-slate-50/80 backdrop-blur-md flex items-center gap-2">
                     <CalendarIcon className="w-4 h-4 text-slate-400" />
                     <span className="text-xs font-black uppercase tracking-widest text-slate-500">
@@ -444,11 +501,72 @@ export const AccountDetails: React.FC = () => {
           ) : (
              <div className="bg-white p-8 rounded-xl border border-slate-100 text-center text-slate-400">
                 <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p>No transactions for this account yet.</p>
+                <p>No transactions for this month.</p>
+                <button 
+                  onClick={() => setIsFilterOpen(true)}
+                  className="mt-4 text-xs font-bold text-indigo-600 hover:underline"
+                >
+                  Change Date
+                </button>
              </div>
           )}
         </section>
       </div>
+
+      {/* Filter Modal */}
+      {isFilterOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in">
+              <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95">
+                  <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                      <h3 className="font-bold text-xl text-slate-900">
+                          {filterStep === 'YEAR' ? 'Select Year' : `Select Month (${tempYear})`}
+                      </h3>
+                      <button 
+                        onClick={() => { setIsFilterOpen(false); setFilterStep('YEAR'); }} 
+                        className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500"
+                      >
+                          <X className="w-5 h-5" />
+                      </button>
+                  </div>
+
+                  <div className="p-4 grid grid-cols-2 gap-3">
+                      {filterStep === 'YEAR' ? (
+                          availableYears.map(year => (
+                              <button 
+                                key={year}
+                                onClick={() => selectYear(year)}
+                                className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 transition-all font-bold text-slate-700 border border-transparent hover:border-indigo-100"
+                              >
+                                  {year}
+                                  <ChevronRight className="w-4 h-4 opacity-30" />
+                              </button>
+                          ))
+                      ) : (
+                          monthNames.map((month, idx) => (
+                              <button 
+                                key={month}
+                                onClick={() => selectMonth(idx)}
+                                className={`p-4 rounded-2xl text-center font-bold text-sm transition-all border ${viewMonth === idx && viewYear === tempYear ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-700 border-transparent hover:bg-indigo-50 hover:border-indigo-100'}`}
+                              >
+                                  {month.substring(0, 3)}
+                              </button>
+                          ))
+                      )}
+                  </div>
+                  
+                  {filterStep === 'MONTH' && (
+                      <div className="p-4 pt-0">
+                          <button 
+                            onClick={() => setFilterStep('YEAR')}
+                            className="w-full py-3 text-sm font-bold text-slate-400 hover:text-slate-600 transition-colors"
+                          >
+                              ← Back to years
+                          </button>
+                      </div>
+                  )}
+              </div>
+          </div>
+      )}
     </div>
   );
 };
