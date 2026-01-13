@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useBudget } from '../context/BudgetContext';
 import { SpendingChart } from '../components/Charts';
-import { ArrowLeft, Edit2, Check, X, Wallet, AlertCircle, Loader2, FileSpreadsheet, Trash2 } from 'lucide-react';
+import { ArrowLeft, Edit2, Check, X, Wallet, AlertCircle, Loader2, FileSpreadsheet, Trash2, Calendar as CalendarIcon } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import ExcelJS from 'exceljs';
+import { Transaction } from '../types';
 
 export const AccountDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -16,9 +17,30 @@ export const AccountDetails: React.FC = () => {
   const highlightedTxId = (location.state as any)?.highlightedTxId;
   
   // Filter transactions for this source and sort by date descending (newest first)
-  const sourceTransactions = transactions
-    .filter(t => t.sourceId === id)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const sourceTransactions = useMemo(() => {
+    return transactions
+      .filter(t => t.sourceId === id)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [transactions, id]);
+
+  // Group transactions by date
+  const groupedTransactions = useMemo(() => {
+    const groups: Record<string, Transaction[]> = {};
+    sourceTransactions.forEach(tx => {
+      const dateKey = new Date(tx.date).toLocaleDateString(undefined, { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
+      }
+      groups[dateKey].push(tx);
+    });
+    return groups;
+  }, [sourceTransactions]);
+
+  const dateKeys = useMemo(() => Object.keys(groupedTransactions), [groupedTransactions]);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
@@ -34,10 +56,13 @@ export const AccountDetails: React.FC = () => {
   // Scroll to highlighted transaction if it exists
   useEffect(() => {
       if (highlightedTxId) {
-          const element = document.getElementById(`tx-${highlightedTxId}`);
-          if (element) {
-              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
+          const timer = setTimeout(() => {
+              const element = document.getElementById(`tx-${highlightedTxId}`);
+              if (element) {
+                  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+          }, 100);
+          return () => clearTimeout(timer);
       }
   }, [highlightedTxId]);
 
@@ -91,7 +116,6 @@ export const AccountDetails: React.FC = () => {
   const downloadReport = async () => {
     setIsExporting(true);
     try {
-        // 1. Capture the Chart Image
         const chartNode = document.getElementById('account-chart-capture');
         let chartImageBase64 = '';
         if (chartNode) {
@@ -99,7 +123,6 @@ export const AccountDetails: React.FC = () => {
             chartImageBase64 = await toPng(chartNode, { backgroundColor: '#ffffff' });
         }
 
-        // 2. Init Workbook
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet(source.name);
         
@@ -308,99 +331,115 @@ export const AccountDetails: React.FC = () => {
 
       <div className="px-4 -mt-8 relative z-20 space-y-6">
         {/* Chart */}
-        <section id="account-chart-capture" className="bg-white rounded-2xl overflow-hidden">
+        <section id="account-chart-capture" className="bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-100">
           <SpendingChart customTransactions={sourceTransactions} />
         </section>
 
         {/* Transactions List */}
         <section>
-          <h2 className="text-lg font-bold text-slate-800 mb-3 px-1">History</h2>
-          {sourceTransactions.length > 0 ? (
-            <div className="space-y-3">
-              {sourceTransactions.map(tx => {
-                const category = categories.find(c => c.id === tx.categoryId);
-                const isTxEditing = editingTxId === tx.id;
-                const isHighlighted = highlightedTxId === tx.id;
-
-                return (
-                  <div 
-                    key={tx.id} 
-                    id={`tx-${tx.id}`}
-                    className={`bg-white p-4 rounded-xl border shadow-sm flex items-center justify-between group transition-all duration-500 ${isHighlighted ? 'ring-2 ring-indigo-500 animate-pulse' : 'border-slate-100'}`}
-                  >
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div className="text-2xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full shrink-0">
-                        {category?.icon || '💸'}
-                      </div>
-                      
-                      {isTxEditing ? (
-                        <div className="flex-1 space-y-2 pr-2 animate-in fade-in">
-                           <div className="flex gap-2">
-                               <input 
-                                  type="number" 
-                                  value={editTxAmount} 
-                                  onChange={e => setEditTxAmount(e.target.value)}
-                                  className="flex-1 border rounded p-1 text-sm font-bold"
-                                  autoFocus
-                               />
-                               <select 
-                                  value={editTxSourceId}
-                                  onChange={e => setEditTxSourceId(e.target.value)}
-                                  className="text-xs border rounded p-1 bg-white"
-                               >
-                                  {sources.map(s => (
-                                      <option key={s.id} value={s.id}>{s.name}</option>
-                                  ))}
-                               </select>
-                           </div>
-                           <input 
-                              type="text" 
-                              value={editTxNote} 
-                              onChange={e => setEditTxNote(e.target.value)}
-                              className="w-full border rounded p-1 text-xs text-slate-600"
-                              placeholder="Note"
-                           />
-                        </div>
-                      ) : (
-                        <div className="min-w-0">
-                           <p className="font-bold text-slate-900 truncate">{category?.name}</p>
-                           {tx.note && <p className="text-xs text-slate-500 truncate">{tx.note}</p>}
-                           <p className="text-[10px] text-slate-400 mt-1">
-                              {new Date(tx.date).toLocaleDateString()} • {new Date(tx.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                           </p>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 pl-2">
-                        {isTxEditing ? (
-                           <div className="flex flex-col gap-1">
-                             <button onClick={() => saveTxEdit(tx.id)} className="bg-indigo-600 text-white p-2 rounded-lg shadow-sm">
-                               <Check className="w-4 h-4" />
-                             </button>
-                             <button onClick={() => setEditingTxId(null)} className="text-slate-400 p-2 hover:bg-slate-50 rounded-lg">
-                               <X className="w-4 h-4" />
-                             </button>
-                           </div>
-                        ) : (
-                           <div className="flex items-center gap-3">
-                             <span className={`font-bold whitespace-nowrap ${tx.type === 'INCOME' ? 'text-green-600' : 'text-slate-900'}`}>
-                               {tx.type === 'INCOME' ? '+' : '-'} ฿{tx.amount.toLocaleString()}
-                             </span>
-                             <div className="flex opacity-0 group-hover:opacity-100 transition-all">
-                                <button onClick={() => startTxEdit(tx)} className="p-2 text-slate-300 hover:text-indigo-600">
-                                    <Edit2 className="w-4 h-4" />
-                                </button>
-                                <button onClick={() => handleDeleteTx(tx.id)} className="p-2 text-slate-300 hover:text-red-500">
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-                             </div>
-                           </div>
-                        )}
-                    </div>
+          <h2 className="text-lg font-bold text-slate-800 mb-4 px-1 flex items-center gap-2">
+              History
+          </h2>
+          
+          {dateKeys.length > 0 ? (
+            <div className="space-y-8">
+              {dateKeys.map(dateKey => (
+                <div key={dateKey} className="space-y-3">
+                  {/* Sticky Date Header */}
+                  <div className="sticky top-0 z-30 py-2 -mx-4 px-4 bg-slate-50/80 backdrop-blur-md flex items-center gap-2">
+                    <CalendarIcon className="w-4 h-4 text-slate-400" />
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-500">
+                      {dateKey}
+                    </span>
+                    <div className="h-px bg-slate-200 flex-1 ml-2 opacity-50" />
                   </div>
-                );
-              })}
+
+                  {groupedTransactions[dateKey].map(tx => {
+                    const category = categories.find(c => c.id === tx.categoryId);
+                    const isTxEditing = editingTxId === tx.id;
+                    const isHighlighted = highlightedTxId === tx.id;
+
+                    return (
+                      <div 
+                        key={tx.id} 
+                        id={`tx-${tx.id}`}
+                        className={`bg-white p-4 rounded-xl border shadow-sm flex items-center justify-between group transition-all duration-500 ${isHighlighted ? 'ring-2 ring-indigo-500 bg-indigo-50/30' : 'border-slate-100'}`}
+                      >
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                          <div className="text-2xl bg-slate-50 w-10 h-10 flex items-center justify-center rounded-full shrink-0">
+                            {category?.icon || '💸'}
+                          </div>
+                          
+                          {isTxEditing ? (
+                            <div className="flex-1 space-y-2 pr-2 animate-in fade-in">
+                               <div className="flex gap-2">
+                                   <input 
+                                      type="number" 
+                                      value={editTxAmount} 
+                                      onChange={e => setEditTxAmount(e.target.value)}
+                                      className="flex-1 border rounded p-1 text-sm font-bold"
+                                      autoFocus
+                                   />
+                                   <select 
+                                      value={editTxSourceId}
+                                      onChange={e => setEditTxSourceId(e.target.value)}
+                                      className="text-xs border rounded p-1 bg-white"
+                                   >
+                                      {sources.map(s => (
+                                          <option key={s.id} value={s.id}>{s.name}</option>
+                                      ))}
+                                   </select>
+                               </div>
+                               <input 
+                                  type="text" 
+                                  value={editTxNote} 
+                                  onChange={e => setEditTxNote(e.target.value)}
+                                  className="w-full border rounded p-1 text-xs text-slate-600"
+                                  placeholder="Note"
+                               />
+                            </div>
+                          ) : (
+                            <div className="min-w-0">
+                               <p className="font-bold text-slate-900 truncate">{category?.name}</p>
+                               {tx.note && <p className="text-xs text-slate-500 truncate">{tx.note}</p>}
+                               <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                                  {new Date(tx.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                               </p>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 pl-2">
+                            {isTxEditing ? (
+                               <div className="flex flex-col gap-1">
+                                 <button onClick={() => saveTxEdit(tx.id)} className="bg-indigo-600 text-white p-2 rounded-lg shadow-sm">
+                                   <Check className="w-4 h-4" />
+                                 </button>
+                                 <button onClick={() => setEditingTxId(null)} className="text-slate-400 p-2 hover:bg-slate-50 rounded-lg">
+                                   <X className="w-4 h-4" />
+                                 </button>
+                               </div>
+                            ) : (
+                               <div className="flex items-center gap-3">
+                                 <span className={`font-bold whitespace-nowrap ${tx.type === 'INCOME' ? 'text-green-600' : 'text-slate-900'}`}>
+                                   {tx.type === 'INCOME' ? '+' : '-'} ฿{tx.amount.toLocaleString()}
+                                 </span>
+                                 <div className="flex opacity-0 group-hover:opacity-100 transition-all">
+                                    <button onClick={() => startTxEdit(tx)} className="p-2 text-slate-300 hover:text-indigo-600">
+                                        <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={() => handleDeleteTx(tx.id)} className="p-2 text-slate-300 hover:text-red-500">
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                 </div>
+                               </div>
+                            )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           ) : (
              <div className="bg-white p-8 rounded-xl border border-slate-100 text-center text-slate-400">
