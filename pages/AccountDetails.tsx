@@ -24,15 +24,41 @@ export const AccountDetails: React.FC = () => {
   const [filterStep, setFilterStep] = useState<'YEAR' | 'MONTH'>('YEAR');
   const [tempYear, setTempYear] = useState(now.getFullYear());
 
-  // Available Years from transactions
+  // Available Years from transactions for this specific account
   const availableYears = useMemo(() => {
     const years = new Set<number>();
     years.add(now.getFullYear());
     transactions.forEach(t => {
+      if (t.sourceId === id) {
         years.add(new Date(t.date).getFullYear());
+      }
     });
     return Array.from(years).sort((a, b) => b - a);
-  }, [transactions]);
+  }, [transactions, id]);
+
+  // Helper for Month Names
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  // Dynamically calculate which months have transactions for the selected tempYear
+  const availableMonthsForTempYear = useMemo(() => {
+    const months = new Set<number>();
+    // Always include current month if we are looking at the current year
+    if (tempYear === now.getFullYear()) {
+      months.add(now.getMonth());
+    }
+    
+    transactions.forEach(t => {
+      const d = new Date(t.date);
+      if (t.sourceId === id && d.getFullYear() === tempYear) {
+        months.add(d.getMonth());
+      }
+    });
+
+    return Array.from(months).sort((a, b) => a - b);
+  }, [transactions, id, tempYear]);
 
   // Filter transactions for this source AND selected month/year
   const sourceTransactions = useMemo(() => {
@@ -152,11 +178,6 @@ export const AccountDetails: React.FC = () => {
       setIsFilterOpen(false);
       setFilterStep('YEAR');
   };
-
-  const monthNames = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-  ];
 
   const downloadReport = async () => {
     setIsExporting(true);
@@ -392,7 +413,7 @@ export const AccountDetails: React.FC = () => {
                   </span>
               </h2>
               <button 
-                onClick={() => setIsFilterOpen(true)}
+                onClick={() => { setIsFilterOpen(true); setFilterStep('YEAR'); }}
                 className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm text-xs font-bold text-indigo-600 hover:bg-slate-50 transition-colors"
               >
                   <Filter className="w-3.5 h-3.5" /> Filter
@@ -529,7 +550,7 @@ export const AccountDetails: React.FC = () => {
                       </button>
                   </div>
 
-                  <div className="p-4 grid grid-cols-2 gap-3">
+                  <div className={`p-4 grid gap-3 ${filterStep === 'YEAR' ? 'grid-cols-2' : availableMonthsForTempYear.length > 4 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                       {filterStep === 'YEAR' ? (
                           availableYears.map(year => (
                               <button 
@@ -542,15 +563,21 @@ export const AccountDetails: React.FC = () => {
                               </button>
                           ))
                       ) : (
-                          monthNames.map((month, idx) => (
-                              <button 
-                                key={month}
-                                onClick={() => selectMonth(idx)}
-                                className={`p-4 rounded-2xl text-center font-bold text-sm transition-all border ${viewMonth === idx && viewYear === tempYear ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-700 border-transparent hover:bg-indigo-50 hover:border-indigo-100'}`}
-                              >
-                                  {month.substring(0, 3)}
-                              </button>
-                          ))
+                          availableMonthsForTempYear.length > 0 ? (
+                            availableMonthsForTempYear.map((idx) => (
+                                <button 
+                                  key={idx}
+                                  onClick={() => selectMonth(idx)}
+                                  className={`p-4 rounded-2xl text-center font-bold text-sm transition-all border ${viewMonth === idx && viewYear === tempYear ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-700 border-transparent hover:bg-indigo-50 hover:border-indigo-100'}`}
+                                >
+                                    {monthNames[idx].substring(0, 3)}
+                                </button>
+                            ))
+                          ) : (
+                            <div className="col-span-full py-8 text-center text-slate-400 italic text-sm">
+                                No activity found for this year.
+                            </div>
+                          )
                       )}
                   </div>
                   
